@@ -196,22 +196,9 @@ func (jm *ControllerV2) sync(ctx context.Context, cronJobKey string) (*time.Dura
 		return nil, err
 	}
 
-	cronJobCopy, requeueAfter, updateStatus, err := jm.syncCronJob(ctx, cronJob, jobsToBeReconciled)
+	cronJobCopy, requeueAfter, updateStatus, reconciliationErr := jm.syncCronJob(ctx, cronJob, jobsToBeReconciled)
 	if err != nil {
 		logger.V(2).Info("Error reconciling cronjob", "cronjob", klog.KObj(cronJob), "err", err)
-
-		if jm.cleanupFinishedJobs(ctx, cronJobCopy, jobsToBeReconciled) {
-			updateStatus = true
-		}
-
-		// Update the CronJob if needed
-		if updateStatus {
-			if _, err := jm.cronJobControl.UpdateStatus(ctx, cronJobCopy); err != nil {
-				logger.V(2).Info("Unable to update status for cronjob", "cronjob", klog.KObj(cronJob), "resourceVersion", cronJob.ResourceVersion, "err", err)
-				return nil, err
-			}
-		}
-		return nil, err
 	}
 
 	if jm.cleanupFinishedJobs(ctx, cronJobCopy, jobsToBeReconciled) {
@@ -228,10 +215,10 @@ func (jm *ControllerV2) sync(ctx context.Context, cronJobKey string) (*time.Dura
 
 	if requeueAfter != nil {
 		logger.V(4).Info("Re-queuing cronjob", "cronjob", klog.KObj(cronJob), "requeueAfter", requeueAfter)
-		return requeueAfter, nil
+		return requeueAfter, reconciliationErr
 	}
 	// this marks the key done, currently only happens when the cronjob is suspended or spec has invalid schedule format
-	return nil, nil
+	return nil, reconciliationErr
 }
 
 // resolveControllerRef returns the controller referenced by a ControllerRef,
